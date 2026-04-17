@@ -528,7 +528,7 @@ function renderInv(){
   return `
     <div class="sbar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input placeholder="Buscar por nome, SKU, local..." value="${invQ}" oninput="invQ=this.value;render()"/>
+      <input id="invSearch" placeholder="Buscar por nome, SKU, local..." value="${invQ}" oninput="invQ=this.value;render();const el=document.getElementById('invSearch');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}"/>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
       <div class="frow" style="margin:0;flex:1;min-width:0">
@@ -590,7 +590,7 @@ function renderLst(){
   return `
     <div class="sbar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input placeholder="Buscar por SKU, plataforma, item..." value="${lstQ}" oninput="lstQ=this.value;render()"/>
+      <input id="lstSearch" placeholder="Buscar por SKU, plataforma, item..." value="${lstQ}" oninput="lstQ=this.value;render();const el=document.getElementById('lstSearch');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}"/>
     </div>
     <div class="frow">${plats.map(p=>`<button class="chip ${lstF===p?'active':''}" onclick="lstF='${p}';render()">${p}</button>`).join('')}</div>
     ${items.length===0?'<div class="empty">Nenhum anúncio cadastrado</div>':`
@@ -779,7 +779,7 @@ function selectAC(inputId,dropId,hiddenId,sku,nome){
 async function delInv(sku){
   if(!confirm('Remover item?')) return;
   S.inventario=S.inventario.filter(i=>i.sku!==sku);
-  saveL(); render(); await pushDelete('inventario',sku);
+  saveL(); render(); await pushDelete('Inventario',sku);
 }
 function openInvModal(item){
   const e=item||null, c=S.config;
@@ -830,9 +830,9 @@ async function saveInv(editSku){
       }
     });
     // Remove item antigo do Sheets
-    await pushDelete('inventario', editSku);
+    await pushDelete('Inventario', editSku);
     // Salva listagens atualizadas no Sheets
-    for(const l of updatedListings){ await pushUpsert('listagem', l); }
+    for(const l of updatedListings){ await pushUpsert('Listagem', l); }
   }
   if(editSku){
     S.inventario=S.inventario.filter(i=>i.sku!==editSku);
@@ -840,14 +840,14 @@ async function saveInv(editSku){
   // Always push (replace or new)
   S.inventario=S.inventario.filter(i=>i.sku!==item.sku);
   S.inventario.push(item);
-  saveL(); cm(); render(); await pushUpsert('inventario',item);
+  saveL(); cm(); render(); await pushUpsert('Inventario',item);
 }
 
 // ── CRUD LST ──────────────────────────────────────────────
 async function delLst(id){
   if(!confirm('Remover anúncio?')) return;
   S.listagem=S.listagem.filter(l=>l.id!==id);
-  saveL(); render(); await pushDelete('listagem',id);
+  saveL(); render(); await pushDelete('Listagem',id);
 }
 function openLstModal(item){
   const e=item||null, c=S.config;
@@ -913,10 +913,10 @@ async function saveLst(editId){
     });
   }
   const inv=S.inventario.find(i=>i.sku===sku);
-  if(inv){ inv.statusItem='Listado'; await pushUpsert('inventario',inv); }
+  if(inv){ inv.statusItem='Listado'; await pushUpsert('Inventario',inv); }
   saveL(); cm(); render();
-  await pushUpsert('listagem',listing);
-  for(const ex of expiredItems){ await pushUpsert('listagem',ex); }
+  await pushUpsert('Listagem',listing);
+  for(const ex of expiredItems){ await pushUpsert('Listagem',ex); }
 }
 
 function dupLst(l){
