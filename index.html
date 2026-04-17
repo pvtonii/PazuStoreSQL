@@ -779,6 +779,7 @@ function selectAC(inputId,dropId,hiddenId,sku,nome){
 async function delInv(sku){
   if(!confirm('Remover item?')) return;
   S.inventario=S.inventario.filter(i=>i.sku!==sku);
+  S.listagem=S.listagem.filter(l=>l.sku!==sku);
   saveL(); render(); await pushDelete('inventario',sku);
 }
 function openInvModal(item){
