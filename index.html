@@ -274,11 +274,11 @@ async function pushConfig(){
 // ── HELPERS ────────────────────────────────────────────────
 function genSKU(){
   const nums=S.inventario.map(i=>{
-    const m=String(i.sku||'').match(/^GP(\d+)$/);
+    const m=String(i.sku||'').match(/^GP-(\d+)$/);
     return m?parseInt(m[1]):0;
   });
   const next=(nums.length?Math.max(...nums):0)+1;
-  return 'GP'+String(next).padStart(5,'0');
+  return 'GP-'+String(next).padStart(4,'0');
 }
 function cleanDate(v){
   if(!v) return '';
