@@ -779,7 +779,7 @@ function selectAC(inputId,dropId,hiddenId,sku,nome){
 async function delInv(sku){
   if(!confirm('Remover item?')) return;
   S.inventario=S.inventario.filter(i=>i.sku!==sku);
-  saveL(); render(); await pushDelete('Inventario',sku);
+  saveL(); render(); await pushDelete('inventario',sku);
 }
 function openInvModal(item){
   const e=item||null, c=S.config;
@@ -830,9 +830,9 @@ async function saveInv(editSku){
       }
     });
     // Remove item antigo do Sheets
-    await pushDelete('Inventario', editSku);
+    await pushDelete('inventario', editSku);
     // Salva listagens atualizadas no Sheets
-    for(const l of updatedListings){ await pushUpsert('Listagem', l); }
+    for(const l of updatedListings){ await pushUpsert('listagem', l); }
   }
   if(editSku){
     S.inventario=S.inventario.filter(i=>i.sku!==editSku);
@@ -840,14 +840,14 @@ async function saveInv(editSku){
   // Always push (replace or new)
   S.inventario=S.inventario.filter(i=>i.sku!==item.sku);
   S.inventario.push(item);
-  saveL(); cm(); render(); await pushUpsert('Inventario',item);
+  saveL(); cm(); render(); await pushUpsert('inventario',item);
 }
 
 // ── CRUD LST ──────────────────────────────────────────────
 async function delLst(id){
   if(!confirm('Remover anúncio?')) return;
   S.listagem=S.listagem.filter(l=>l.id!==id);
-  saveL(); render(); await pushDelete('Listagem',id);
+  saveL(); render(); await pushDelete('listagem',id);
 }
 function openLstModal(item){
   const e=item||null, c=S.config;
@@ -913,10 +913,10 @@ async function saveLst(editId){
     });
   }
   const inv=S.inventario.find(i=>i.sku===sku);
-  if(inv){ inv.statusItem='Listado'; await pushUpsert('Inventario',inv); }
+  if(inv){ inv.statusItem='Listado'; await pushUpsert('inventario',inv); }
   saveL(); cm(); render();
-  await pushUpsert('Listagem',listing);
-  for(const ex of expiredItems){ await pushUpsert('Listagem',ex); }
+  await pushUpsert('listagem',listing);
+  for(const ex of expiredItems){ await pushUpsert('listagem',ex); }
 }
 
 function dupLst(l){
