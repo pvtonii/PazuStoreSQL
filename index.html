@@ -903,30 +903,28 @@ async function saveLst(editId){
   };
   if(editId){ const idx=S.listagem.findIndex(l=>l.id===editId); if(idx>=0) S.listagem[idx]=listing; else S.listagem.push(listing); }
   else S.listagem.push(listing);
-  // Se vendido, expirar todas as outras listagens do mesmo SKU
-  const expiredItems=[];
+  // Se vendido, deletar todas as outras listagens do mesmo SKU
+  const toDelete=[];
   if(status==='Vendido'){
     S.listagem.forEach(l=>{
       if(l.sku===sku && l.id!==listing.id && l.status!=='Vendido'){
-        l.status='Expirado';
-        expiredItems.push({...l});
+        toDelete.push(l.id);
       }
     });
+    S.listagem=S.listagem.filter(l=>!toDelete.includes(l.id));
   }
   const inv=S.inventario.find(i=>i.sku===sku);
   if(inv){ inv.statusItem='Listado'; await pushUpsert('inventario',inv); }
   saveL(); cm(); render();
   await pushUpsert('listagem',listing);
-  for(const ex of expiredItems){ await pushUpsert('listagem',ex); }
+  for(const id of toDelete){ await pushDelete('listagem',id); }
 }
-
 function dupLst(l){
   // Open listing modal pre-filled with same item but blank id, blank platform, status=Ativo
   const dup={...l, id:'', plataforma:'', status:'Ativo', valorVendido:'', dataVenda:'', formaPgto:''};
   openLstModal(dup);
 }
 function cm(){ document.getElementById('mc').innerHTML=''; }
-
 // ── INIT ──────────────────────────────────────────────────
 render();
 if(SB_URL&&SB_KEY) syncFromSupabase();
