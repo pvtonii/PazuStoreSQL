@@ -566,7 +566,7 @@ function renderInv(){
   else if(invSort==='maior') items=[...items].sort((a,b)=>(parseFloat(b.valorPago)||0)-(parseFloat(a.valorPago)||0));
   else if(invSort==='menor') items=[...items].sort((a,b)=>(parseFloat(a.valorPago)||0)-(parseFloat(b.valorPago)||0));
   else if(invSort==='lucro') items=[...items].sort((a,b)=>(getVV(b.sku)-(parseFloat(b.valorPago)||0))-(getVV(a.sku)-(parseFloat(a.valorPago)||0)));
-  // default: recente = ordem de inserção (sem sort)
+  else items=[...items].reverse(); // recente = último inserido primeiro
   return `
     <div class="sbar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
