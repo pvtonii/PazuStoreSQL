@@ -136,6 +136,22 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:3px;}
 .ac-item .ac-name{font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
 .ac-item .ac-sku{font-size:11px;color:var(--text2);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .notice{background:var(--amber-50);border:0.5px solid var(--amber-100);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--amber-800);margin-bottom:14px;}
+/* clickable week rows */
+.wk-row{cursor:pointer;transition:background .12s;margin:0 -14px;padding-left:14px;padding-right:14px;}
+.wk-row:hover,.wk-row:active{background:var(--pink-50);}
+.wk-row .wk-chev{color:var(--gray-400);font-size:18px;margin-left:6px;line-height:1;flex-shrink:0;}
+/* week detail modal */
+.wd-item{padding:12px 0;border-bottom:0.5px solid rgba(0,0,0,0.07);}
+.wd-item:last-child{border-bottom:none;}
+.wd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;}
+.wd-name{font-size:14px;font-weight:500;color:var(--text);flex:1;min-width:0;}
+.wd-lucro{font-size:13px;font-weight:500;flex-shrink:0;}
+.wd-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px;color:var(--text2);margin-top:6px;}
+.wd-meta b{color:var(--text);font-weight:500;}
+.wd-summary{background:var(--bg2);border-radius:8px;padding:10px 12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.wd-summary>div{text-align:center;}
+.wd-summary .wd-s-lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+.wd-summary .wd-s-val{font-size:14px;font-weight:500;}
 </style>
 </head>
 <body>
@@ -531,19 +547,96 @@ function renderWeekly(lst,inv){
 
   return `<div class="card" style="padding:0 14px">
     ${sorted.map(([wk,data])=>`
-      <div class="irow">
+      <div class="irow wk-row" onclick="openWeekDetail('${wk}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:13px;font-weight:500;color:var(--text)">${fmtWk(wk)}</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px">${data.count} ${data.count===1?'item':'itens'} vendidos</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:13px;font-weight:500;color:var(--teal-600)">${fm(data.vendas)}</div>
-            <div style="font-size:11px;color:var(--text2)">lucro: <span class="${data.lucro>=0?'pos':'neg'}">${fm(data.lucro)}</span></div>
+          <div style="display:flex;align-items:center">
+            <div style="text-align:right">
+              <div style="font-size:13px;font-weight:500;color:var(--teal-600)">${fm(data.vendas)}</div>
+              <div style="font-size:11px;color:var(--text2)">lucro: <span class="${data.lucro>=0?'pos':'neg'}">${fm(data.lucro)}</span></div>
+            </div>
+            <span class="wk-chev">›</span>
           </div>
         </div>
       </div>`).join('')}
   </div>`;
+}
+
+// ── WEEK DETAIL MODAL ─────────────────────────────────────
+function openWeekDetail(weekStart){
+  // weekStart is Monday (YYYY-MM-DD). Calculate Sunday.
+  const mon=new Date(weekStart+'T12:00:00');
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  const sunStr=sun.toISOString().slice(0,10);
+
+  // Get all sold listings in this week
+  const soldInWeek=S.listagem.filter(l=>
+    l.status==='Vendido' && l.dataVenda &&
+    l.dataVenda>=weekStart && l.dataVenda<=sunStr
+  );
+
+  // Build enriched items with calculated fields
+  const items=soldInWeek.map(l=>{
+    const invItem=S.inventario.find(i=>i.sku===l.sku);
+    const pago=invItem?parseFloat(invItem.valorPago)||0:0;
+    const vendido=parseFloat(l.valorVendido)||0;
+    const lucro=vendido-pago;
+    // Days in stock: from dataCompra to dataVenda
+    let dias='—';
+    if(invItem&&invItem.dataCompra&&l.dataVenda){
+      const dc=new Date(invItem.dataCompra+'T12:00:00');
+      const dv=new Date(l.dataVenda+'T12:00:00');
+      const diff=Math.round((dv-dc)/(1000*60*60*24));
+      if(!isNaN(diff)&&diff>=0) dias=diff+' '+(diff===1?'dia':'dias');
+    }
+    return {
+      sku:l.sku,
+      nome:invItem?invItem.nome:'(item removido)',
+      pago, vendido, lucro,
+      dias,
+      plataforma:l.plataforma||'—',
+      dataVenda:l.dataVenda,
+    };
+  }).sort((a,b)=>(b.dataVenda||'').localeCompare(a.dataVenda||''));
+
+  const totVendas=items.reduce((s,i)=>s+i.vendido,0);
+  const totLucro=items.reduce((s,i)=>s+i.lucro,0);
+
+  const fmt=dt=>new Date(dt+'T12:00:00').toLocaleDateString('pt-BR',{month:'short',day:'numeric'});
+  const titulo=fmt(weekStart)+' – '+fmt(sunStr);
+
+  document.getElementById('mc').innerHTML=`
+    <div class="mbg" onclick="if(event.target===this)cm()">
+      <div class="modal">
+        <div class="mhdr">
+          <h2>Vendas · ${titulo}</h2>
+          <button class="xbtn" onclick="cm()">×</button>
+        </div>
+        ${items.length?`
+          <div class="wd-summary">
+            <div><div class="wd-s-lbl">Itens</div><div class="wd-s-val">${items.length}</div></div>
+            <div><div class="wd-s-lbl">Arrecadado</div><div class="wd-s-val" style="color:var(--teal-600)">${fm(totVendas)}</div></div>
+            <div><div class="wd-s-lbl">Lucro</div><div class="wd-s-val ${totLucro>=0?'pos':'neg'}">${fm(totLucro)}</div></div>
+          </div>
+          ${items.map(i=>`
+            <div class="wd-item">
+              <div class="wd-head">
+                <div class="wd-name">${i.nome}<div style="margin-top:3px"><span class="sku">${i.sku}</span></div></div>
+                <div class="wd-lucro ${i.lucro>=0?'pos':'neg'}">${i.lucro>=0?'+':''}${fm(i.lucro)}</div>
+              </div>
+              <div class="wd-meta">
+                <div>Pago: <b>${fm(i.pago)}</b></div>
+                <div>Vendido: <b>${fm(i.vendido)}</b></div>
+                <div>Em estoque: <b>${i.dias}</b></div>
+                <div>Plataforma: <b>${i.plataforma}</b></div>
+              </div>
+            </div>`).join('')}
+        `:`<div class="empty">Nenhuma venda nesta semana</div>`}
+      </div>
+    </div>`;
 }
 
 // ── INVENTÁRIO ────────────────────────────────────────────
