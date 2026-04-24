@@ -148,10 +148,10 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:3px;}
 .wd-lucro{font-size:13px;font-weight:500;flex-shrink:0;}
 .wd-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12px;color:var(--text2);margin-top:6px;}
 .wd-meta b{color:var(--text);font-weight:500;}
-.wd-summary{background:var(--bg2);border-radius:8px;padding:10px 12px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-.wd-summary>div{text-align:center;}
-.wd-summary .wd-s-lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
-.wd-summary .wd-s-val{font-size:14px;font-weight:500;}
+.wd-summary{background:var(--bg2);border-radius:8px;padding:10px 8px;margin-bottom:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.wd-summary>div{text-align:center;min-width:0;}
+.wd-summary .wd-s-lbl{font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+.wd-summary .wd-s-val{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 </head>
 <body>
@@ -602,6 +602,7 @@ function openWeekDetail(weekStart){
     };
   }).sort((a,b)=>(b.dataVenda||'').localeCompare(a.dataVenda||''));
 
+  const totInvestido=items.reduce((s,i)=>s+i.pago,0);
   const totVendas=items.reduce((s,i)=>s+i.vendido,0);
   const totLucro=items.reduce((s,i)=>s+i.lucro,0);
 
@@ -618,6 +619,7 @@ function openWeekDetail(weekStart){
         ${items.length?`
           <div class="wd-summary">
             <div><div class="wd-s-lbl">Itens</div><div class="wd-s-val">${items.length}</div></div>
+            <div><div class="wd-s-lbl">Investido</div><div class="wd-s-val" style="color:var(--coral-400)">${fm(totInvestido)}</div></div>
             <div><div class="wd-s-lbl">Arrecadado</div><div class="wd-s-val" style="color:var(--teal-600)">${fm(totVendas)}</div></div>
             <div><div class="wd-s-lbl">Lucro</div><div class="wd-s-val ${totLucro>=0?'pos':'neg'}">${fm(totLucro)}</div></div>
           </div>
