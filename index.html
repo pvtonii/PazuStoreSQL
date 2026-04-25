@@ -140,6 +140,10 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:3px;}
 .wk-row{cursor:pointer;transition:background .12s;margin:0 -14px;padding-left:14px;padding-right:14px;}
 .wk-row:hover,.wk-row:active{background:var(--pink-50);}
 .wk-row .wk-chev{color:var(--gray-400);font-size:18px;margin-left:6px;line-height:1;flex-shrink:0;}
+/* ver mais button + months section */
+.vm-btn{width:100%;background:transparent;border:none;color:var(--text2);font-size:12px;font-weight:500;padding:14px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;border-top:0.5px solid rgba(0,0,0,0.06);margin-top:0;}
+.vm-btn:hover,.vm-btn:active{color:var(--text);}
+.vm-divider{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 6px;border-bottom:0.5px solid rgba(0,0,0,0.06);margin:0 -14px 0;padding-left:14px;padding-right:14px;}
 /* week detail modal */
 .wd-item{padding:12px 0;border-bottom:0.5px solid rgba(0,0,0,0.07);}
 .wd-item:last-child{border-bottom:none;}
@@ -536,7 +540,9 @@ function renderWeekly(lst,inv){
     weeks[wk].count++;
   });
 
-  const sorted=Object.entries(weeks).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8);
+  const sortedAll=Object.entries(weeks).sort((a,b)=>b[0].localeCompare(a[0]));
+  const recent=sortedAll.slice(0,4);
+  const hasMore=sortedAll.length>4;
 
   function fmtWk(mon){
     const d=new Date(mon+'T12:00:00');
@@ -545,8 +551,29 @@ function renderWeekly(lst,inv){
     return fmt(d)+' – '+fmt(sun);
   }
 
+  // Group ALL sold listings by month (YYYY-MM), last 6 months
+  const months={};
+  sold.forEach(l=>{
+    const mk=l.dataVenda.slice(0,7);
+    if(!months[mk]) months[mk]={vendas:0,investido:0,lucro:0,count:0};
+    const vv=parseFloat(l.valorVendido)||0;
+    const invItem=inv.find(i=>i.sku===l.sku);
+    const pago=invItem?parseFloat(invItem.valorPago)||0:0;
+    months[mk].vendas+=vv;
+    months[mk].investido+=pago;
+    months[mk].lucro+=vv-pago;
+    months[mk].count++;
+  });
+  const sortedMonths=Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
+
+  function fmtMonth(mk){
+    const [y,m]=mk.split('-');
+    const d=new Date(parseInt(y),parseInt(m)-1,1);
+    return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase());
+  }
+
   return `<div class="card" style="padding:0 14px">
-    ${sorted.map(([wk,data])=>`
+    ${recent.map(([wk,data])=>`
       <div class="irow wk-row" onclick="openWeekDetail('${wk}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
@@ -562,7 +589,119 @@ function renderWeekly(lst,inv){
           </div>
         </div>
       </div>`).join('')}
+    ${hasMore?`
+      <button id="vmBtn" class="vm-btn" onclick="toggleMonthsView()">
+        <span id="vmLabel">Ver meses anteriores</span>
+        <span id="vmIcon" style="margin-left:6px;transition:transform .2s;display:inline-block">▾</span>
+      </button>
+      <div id="monthsView" style="display:none">
+        <div class="vm-divider">Por mês</div>
+        ${sortedMonths.map(([mk,data])=>`
+          <div class="irow wk-row" onclick="openMonthDetail('${mk}')">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:13px;font-weight:500;color:var(--text)">${fmtMonth(mk)}</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">${data.count} ${data.count===1?'item':'itens'} vendidos</div>
+              </div>
+              <div style="display:flex;align-items:center">
+                <div style="text-align:right">
+                  <div style="font-size:13px;font-weight:500;color:var(--teal-600)">${fm(data.vendas)}</div>
+                  <div style="font-size:11px;color:var(--text2)">lucro: <span class="${data.lucro>=0?'pos':'neg'}">${fm(data.lucro)}</span></div>
+                </div>
+                <span class="wk-chev">›</span>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+    `:''}
   </div>`;
+}
+
+function toggleMonthsView(){
+  const v=document.getElementById('monthsView');
+  const lbl=document.getElementById('vmLabel');
+  const ic=document.getElementById('vmIcon');
+  if(v.style.display==='none'){
+    v.style.display='block';
+    lbl.textContent='Ocultar meses anteriores';
+    ic.style.transform='rotate(180deg)';
+  } else {
+    v.style.display='none';
+    lbl.textContent='Ver meses anteriores';
+    ic.style.transform='rotate(0deg)';
+  }
+}
+
+// ── MONTH DETAIL MODAL (shows weeks of that month) ────────
+function openMonthDetail(monthKey){
+  // monthKey = 'YYYY-MM'
+  const [y,m]=monthKey.split('-').map(Number);
+  const monthStart=monthKey+'-01';
+  const monthEnd=new Date(y,m,0).toISOString().slice(0,10); // last day
+
+  // Filter sold listings in this month
+  const soldInMonth=S.listagem.filter(l=>
+    l.status==='Vendido'&&l.dataVenda&&
+    l.dataVenda>=monthStart&&l.dataVenda<=monthEnd
+  );
+
+  // Group by week
+  function monOf(d){ const dt=new Date(d+'T12:00:00'); const day=dt.getDay(); const diff=day===0?-6:1-day; dt.setDate(dt.getDate()+diff); return dt.toISOString().slice(0,10); }
+  const wks={};
+  let totVendas=0,totInvest=0,totLucro=0,totCount=0;
+  soldInMonth.forEach(l=>{
+    const wk=monOf(l.dataVenda);
+    if(!wks[wk]) wks[wk]={vendas:0,investido:0,lucro:0,count:0};
+    const vv=parseFloat(l.valorVendido)||0;
+    const invItem=S.inventario.find(i=>i.sku===l.sku);
+    const pago=invItem?parseFloat(invItem.valorPago)||0:0;
+    wks[wk].vendas+=vv; wks[wk].investido+=pago; wks[wk].lucro+=vv-pago; wks[wk].count++;
+    totVendas+=vv; totInvest+=pago; totLucro+=vv-pago; totCount++;
+  });
+  const sortedWks=Object.entries(wks).sort((a,b)=>b[0].localeCompare(a[0]));
+
+  function fmtWk(mon){
+    const d=new Date(mon+'T12:00:00');
+    const sun=new Date(d); sun.setDate(d.getDate()+6);
+    const fmt=dt=>dt.toLocaleDateString('pt-BR',{month:'short',day:'numeric'});
+    return fmt(d)+' – '+fmt(sun);
+  }
+  const monthName=new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase());
+
+  document.getElementById('mc').innerHTML=`
+    <div class="mbg" onclick="if(event.target===this)cm()">
+      <div class="modal">
+        <div class="mhdr">
+          <h2>${monthName}</h2>
+          <button class="xbtn" onclick="cm()">×</button>
+        </div>
+        ${totCount?`
+          <div class="wd-summary">
+            <div><div class="wd-s-lbl">Itens</div><div class="wd-s-val">${totCount}</div></div>
+            <div><div class="wd-s-lbl">Investido</div><div class="wd-s-val" style="color:var(--coral-400)">${fm(totInvest)}</div></div>
+            <div><div class="wd-s-lbl">Arrecadado</div><div class="wd-s-val" style="color:var(--teal-600)">${fm(totVendas)}</div></div>
+            <div><div class="wd-s-lbl">Lucro</div><div class="wd-s-val ${totLucro>=0?'pos':'neg'}">${fm(totLucro)}</div></div>
+          </div>
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;padding:0 2px">Semanas</div>
+          ${sortedWks.map(([wk,data])=>`
+            <div class="irow wk-row" style="margin:0 -4px;padding-left:4px;padding-right:4px" onclick="openWeekDetail('${wk}')">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:13px;font-weight:500;color:var(--text)">${fmtWk(wk)}</div>
+                  <div style="font-size:11px;color:var(--text2);margin-top:2px">${data.count} ${data.count===1?'item':'itens'}</div>
+                </div>
+                <div style="display:flex;align-items:center">
+                  <div style="text-align:right">
+                    <div style="font-size:13px;font-weight:500;color:var(--teal-600)">${fm(data.vendas)}</div>
+                    <div style="font-size:11px;color:var(--text2)">lucro: <span class="${data.lucro>=0?'pos':'neg'}">${fm(data.lucro)}</span></div>
+                  </div>
+                  <span class="wk-chev">›</span>
+                </div>
+              </div>
+            </div>`).join('')}
+        `:`<div class="empty">Nenhuma venda neste mês</div>`}
+      </div>
+    </div>`;
 }
 
 // ── WEEK DETAIL MODAL ─────────────────────────────────────
