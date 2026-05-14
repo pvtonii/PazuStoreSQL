@@ -44,8 +44,8 @@ body{display:flex;justify-content:center;}
 @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
 /* ── Mais drawer ─────────────────────────────── */
-.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90;animation:fade-in .18s ease-out;}
-.drawer{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 28px);z-index:91;animation:slide-up .22s ease-out;max-width:520px;margin:0 auto;box-shadow:0 -8px 24px rgba(0,0,0,.12);}
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:150;animation:fade-in .18s ease-out;display:flex;align-items:flex-end;justify-content:center;}
+.drawer{position:relative;width:100%;max-width:430px;background:var(--bg);border-radius:16px 16px 0 0;padding:16px 16px calc(var(--safe-bottom) + 28px);animation:slide-up .22s ease-out;box-shadow:0 -8px 24px rgba(0,0,0,.18);}
 .drawer-grip{width:36px;height:4px;background:var(--text2);opacity:.3;border-radius:2px;margin:0 auto 14px;}
 .drawer-title{font-size:13px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;font-weight:500;margin:0 0 10px 4px;}
 .drawer-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;cursor:pointer;transition:background .15s;}
@@ -57,6 +57,17 @@ body{display:flex;justify-content:center;}
 .drawer-item .di-chev{margin-left:auto;color:var(--text2);font-size:18px;}
 @keyframes slide-up{from{transform:translateY(100%);}to{transform:translateY(0);}}
 @keyframes fade-in{from{opacity:0;}to{opacity:1;}}
+
+/* ── Relatórios — cards clicáveis ─────────────── */
+.rel-clickable{cursor:pointer;transition:transform .1s,box-shadow .15s;}
+.rel-clickable:active{transform:scale(0.99);}
+.rel-clickable:hover{box-shadow:0 2px 12px rgba(153,53,86,0.1);}
+.rel-row{cursor:pointer;transition:background .12s;}
+.rel-row:hover{background:var(--pink-50);}
+.rel-row:active{background:var(--pink-100);}
+.rel-bar-row{cursor:pointer;padding:8px 4px;margin:0 -4px;border-radius:6px;transition:background .12s;}
+.rel-bar-row:hover{background:var(--pink-50);}
+.rel-bar-row:active{background:var(--pink-100);}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 24px);}
 .tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:calc(var(--nav-h) + var(--safe-bottom));padding-bottom:var(--safe-bottom);background:var(--bg);border-top:0.5px solid var(--border);box-shadow:0 -4px 20px rgba(0,0,0,0.08);display:flex;z-index:100;align-items:flex-start;}
 .tab{flex:1;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;border:none;background:transparent;color:var(--gray-400);font-size:10px;font-family:inherit;transition:color .15s;min-height:var(--nav-h);}
@@ -259,10 +270,10 @@ function sbHeaders(){
 }
 
 async function sbGet(table, params='', opts={}){
-  const headers={...sbHeaders()};
-  if(opts.noCache){ headers['Cache-Control']='no-cache'; headers['Pragma']='no-cache'; }
+  // Importante: NÃO adicionar headers como 'Cache-Control' aqui — eles quebram o CORS do PostgREST.
+  // Pra burlar cache, usamos cache:'no-store' + timestamp na query.
   const url=SB_URL+'/rest/v1/'+table+'?'+params + (opts.noCache?('&_ts='+Date.now()):'');
-  const r=await fetch(url, { headers, cache: opts.noCache?'no-store':'default' });
+  const r=await fetch(url, { headers: sbHeaders(), cache: opts.noCache?'no-store':'default' });
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -936,7 +947,7 @@ function openWeekDetail(weekStart){
             <div><div class="wd-s-lbl">Lucro</div><div class="wd-s-val ${totLucro>=0?'pos':'neg'}">${fm(totLucro)}</div></div>
           </div>
           ${items.map(i=>`
-            <div class="wd-item">
+            <div class="wd-item" style="cursor:pointer" onclick="cm();openItemDetail('${i.sku}')">
               <div class="wd-head">
                 <div class="wd-name">${i.nome}<div style="margin-top:3px"><span class="sku">${i.sku}</span></div></div>
                 <div class="wd-lucro ${i.lucro>=0?'pos':'neg'}">${i.lucro>=0?'+':''}${fm(i.lucro)}</div>
@@ -1461,21 +1472,119 @@ function relTopList(items, valFn, valFmt){
     </div>`).join('');
 }
 
+// Cache temporário para o drill-down (preview->lista completa)
+window.__relCache = {};
+
+// Card resumo com top 3 + footer clicável
+function relSummaryCard(cacheKey, title, subtitle, items, renderItem, footerLabel){
+  window.__relCache[cacheKey] = { title, subtitle, items, renderItem };
+  if(!items.length){
+    return `<div class="card" style="margin-bottom:14px;padding:14px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px">${title}</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">${subtitle}</div>
+      <div class="empty" style="padding:8px 0">Sem dados</div>
+    </div>`;
+  }
+  const preview = items.slice(0,3).map((it,idx)=>renderItem(it,idx)).join('');
+  return `
+    <div class="card rel-clickable" style="margin-bottom:14px;padding:14px" onclick="openRelList('${cacheKey}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text)">${title}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${subtitle}</div>
+        </div>
+        <span style="color:var(--text2);font-size:16px;flex-shrink:0">›</span>
+      </div>
+      <div style="margin-top:10px">${preview}</div>
+      ${items.length>3?`<div style="text-align:center;font-size:12px;color:var(--pink-600);font-weight:500;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border)">${footerLabel||`Ver todos os ${items.length}`} →</div>`:''}
+    </div>`;
+}
+
+function openRelList(cacheKey){
+  const data = window.__relCache[cacheKey];
+  if(!data){ return; }
+  document.getElementById('mc').innerHTML=`
+    <div class="mbg" onclick="if(event.target===this)cm()">
+      <div class="modal">
+        <div class="mhdr">
+          <div style="flex:1;min-width:0">
+            <h2 style="margin:0">${data.title}</h2>
+            <div style="font-size:11px;color:var(--text2);margin-top:3px">${data.subtitle} · ${data.items.length} ${data.items.length===1?'item':'itens'}</div>
+          </div>
+          <button class="xbtn" onclick="cm()">×</button>
+        </div>
+        <div>${data.items.map((it,idx)=>data.renderItem(it,idx)).join('')}</div>
+      </div>
+    </div>`;
+}
+
+// Renderers de linha
+function relRowItem(it, idx){
+  return `
+    <div class="t5row rel-row" onclick="cm();openItemDetail('${it.sku}')" style="cursor:pointer">
+      <div class="t5n">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div class="iname" style="font-size:13px">${it.nome}${it.sexo?` <span class="badge bg-${it.sexo==='F'?'pink':it.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:2px">${it.sexo}</span>`:''}</div>
+        <div class="isub"><span class="sku">${it.sku}</span><span>${it.categoria||'—'}</span></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600;color:${it.lucro>=0?'var(--teal-600)':'var(--coral-400)'}">${fm(it.lucro)}</div>
+        <div class="isub" style="font-size:11px">${it.pago>0?(it.margem.toFixed(0)+'%'):''}</div>
+      </div>
+    </div>`;
+}
+function relRowMargem(it, idx){
+  return `
+    <div class="t5row rel-row" onclick="cm();openItemDetail('${it.sku}')" style="cursor:pointer">
+      <div class="t5n">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div class="iname" style="font-size:13px">${it.nome}${it.sexo?` <span class="badge bg-${it.sexo==='F'?'pink':it.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:2px">${it.sexo}</span>`:''}</div>
+        <div class="isub"><span class="sku">${it.sku}</span><span>${it.categoria||'—'}</span></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600;color:var(--teal-600)">${it.margem.toFixed(1)}%</div>
+        <div class="isub" style="font-size:11px">${fm(it.lucro)}</div>
+      </div>
+    </div>`;
+}
+function relRowDias(it, idx, isRapido){
+  return `
+    <div class="t5row rel-row" onclick="cm();openItemDetail('${it.sku}')" style="cursor:pointer">
+      <div class="t5n">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div class="iname" style="font-size:13px">${it.nome}${it.sexo?` <span class="badge bg-${it.sexo==='F'?'pink':it.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:2px">${it.sexo}</span>`:''}</div>
+        <div class="isub"><span class="sku">${it.sku}</span><span>${it.categoria||'—'}</span></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600;color:${isRapido?'var(--teal-600)':'var(--coral-400)'}">${it.dias} ${it.dias===1?'dia':'dias'}</div>
+        <div class="isub ${it.lucro>=0?'pos':'neg'}" style="font-size:11px">${fm(it.lucro)}</div>
+      </div>
+    </div>`;
+}
+function relRowCount(it, idx){
+  return `
+    <div class="t5row rel-row" onclick="cm();openItemDetail('${it.sku}')" style="cursor:pointer">
+      <div class="t5n">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div class="iname" style="font-size:13px">${it.nome}${it.sexo?` <span class="badge bg-${it.sexo==='F'?'pink':it.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:2px">${it.sexo}</span>`:''}</div>
+        <div class="isub"><span>${it.categoria||'—'}</span></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600">${it.count}×</div>
+        <div class="${it.lucroTotal>=0?'pos':'neg'}" style="font-size:11px">${fm(it.lucroTotal)}</div>
+      </div>
+    </div>`;
+}
+
 // ── Performance ─────────────────────────────────────────
 function renderRelPerformance(sold){
-  // 1. Mais vendidos por categoria (top 10 pelos categorias mais frequentes)
-  // 2. Top 10 lucrativos (já temos no dash, mas com detalhes)
-  // 3. Top 10 melhor margem %
-  // 4. Top 10 que mais demoraram a vender
-  // 5. Top 10 que venderam mais rápido
-
   // Sort copies
   const porLucro=[...sold].sort((a,b)=>b.lucro-a.lucro);
   const porMargem=[...sold].filter(s=>s.pago>0).sort((a,b)=>b.margem-a.margem);
   const comDias=sold.filter(s=>s.dias!=null);
   const maisDemorou=[...comDias].sort((a,b)=>b.dias-a.dias);
   const maisRapido=[...comDias].sort((a,b)=>a.dias-b.dias);
-  // Mais vendidos = item duplicado é raro nesse modelo (cada item é único), então faço por NOME
+  // Mais vendidos por NOME
   const porNome={};
   sold.forEach(s=>{
     if(!porNome[s.nome]) porNome[s.nome]={nome:s.nome, sku:s.sku, categoria:s.categoria, sexo:s.sexo, count:0, lucroTotal:0};
@@ -1483,60 +1592,26 @@ function renderRelPerformance(sold){
     porNome[s.nome].lucroTotal+=s.lucro;
   });
   const maisVendidos=Object.values(porNome).filter(x=>x.count>1).sort((a,b)=>b.count-a.count);
+
   return `
-    ${maisVendidos.length>0?relCard(
-      '🔁 Itens que mais venderam',
-      'Mesmo nome aparecendo em múltiplas vendas',
-      maisVendidos.slice(0,10).map((it,idx)=>`
-        <div class="t5row">
-          <div class="t5n">${idx+1}</div>
-          <div style="flex:1;min-width:0">
-            <div class="iname" style="font-size:13px">${it.nome}${it.sexo?` <span class="badge bg-${it.sexo==='F'?'pink':it.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:2px">${it.sexo}</span>`:''}</div>
-            <div class="isub"><span>${it.categoria||'—'}</span></div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:13px;font-weight:600">${it.count}×</div>
-            <div class="${it.lucroTotal>=0?'pos':'neg'}" style="font-size:11px">${fm(it.lucroTotal)}</div>
-          </div>
-        </div>`).join('')
+    ${maisVendidos.length>0?relSummaryCard('perf_mais_vendidos', '🔁 Itens que mais venderam', 'Mesmo nome aparecendo em múltiplas vendas',
+      maisVendidos, relRowCount, `Ver todos os ${maisVendidos.length}`
     ):''}
 
-    ${relCard('💰 Top 10 mais lucrativos', 'Por valor absoluto de lucro ($)',
-      relTopList(porLucro, x=>x.lucro, fm)
+    ${relSummaryCard('perf_lucro', '💰 Mais lucrativos', 'Por valor absoluto de lucro ($)',
+      porLucro, relRowItem, `Ver todos os ${porLucro.length}`
     )}
 
-    ${relCard('📈 Top 10 melhor margem (%)', 'Lucro relativo ao valor pago',
-      relTopList(porMargem, x=>x.margem, v=>v.toFixed(1)+'%')
+    ${relSummaryCard('perf_margem', '📈 Melhor margem (%)', 'Lucro relativo ao valor pago',
+      porMargem, relRowMargem, `Ver todos os ${porMargem.length}`
     )}
 
-    ${maisRapido.length>0?relCard('⚡ Venderam mais rápido', 'Menos tempo entre compra e venda',
-      maisRapido.slice(0,10).map((it,idx)=>`
-        <div class="t5row">
-          <div class="t5n">${idx+1}</div>
-          <div style="flex:1;min-width:0">
-            <div class="iname" style="font-size:13px">${it.nome}</div>
-            <div class="isub"><span class="sku">${it.sku}</span><span>${it.categoria||'—'}</span></div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:13px;font-weight:600;color:var(--teal-600)">${it.dias} ${it.dias===1?'dia':'dias'}</div>
-            <div class="${it.lucro>=0?'pos':'neg'}" style="font-size:11px">${fm(it.lucro)}</div>
-          </div>
-        </div>`).join('')
+    ${maisRapido.length>0?relSummaryCard('perf_rapido', '⚡ Venderam mais rápido', 'Menos tempo entre compra e venda',
+      maisRapido, (it,idx)=>relRowDias(it,idx,true), `Ver todos os ${maisRapido.length}`
     ):''}
 
-    ${maisDemorou.length>0?relCard('🐌 Mais tempo parados', 'Tempo entre compra e venda',
-      maisDemorou.slice(0,10).map((it,idx)=>`
-        <div class="t5row">
-          <div class="t5n">${idx+1}</div>
-          <div style="flex:1;min-width:0">
-            <div class="iname" style="font-size:13px">${it.nome}</div>
-            <div class="isub"><span class="sku">${it.sku}</span><span>${it.categoria||'—'}</span></div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:13px;font-weight:600;color:var(--coral-400)">${it.dias} ${it.dias===1?'dia':'dias'}</div>
-            <div class="${it.lucro>=0?'pos':'neg'}" style="font-size:11px">${fm(it.lucro)}</div>
-          </div>
-        </div>`).join('')
+    ${maisDemorou.length>0?relSummaryCard('perf_lento', '🐌 Mais tempo parados', 'Tempo entre compra e venda',
+      maisDemorou, (it,idx)=>relRowDias(it,idx,false), `Ver todos os ${maisDemorou.length}`
     ):''}
   `;
 }
@@ -1560,11 +1635,12 @@ function relGroupBy(arr, keyFn){
   const out={};
   arr.forEach(s=>{
     const k = keyFn(s) || '—';
-    if(!out[k]) out[k]={ key:k, count:0, receita:0, lucro:0, pago:0, margens:[] };
+    if(!out[k]) out[k]={ key:k, count:0, receita:0, lucro:0, pago:0, margens:[], items:[] };
     out[k].count++;
     out[k].receita+=s.vendido;
     out[k].lucro+=s.lucro;
     out[k].pago+=s.pago;
+    out[k].items.push(s);
     if(s.pago>0) out[k].margens.push(s.margem);
   });
   return Object.values(out).map(g=>({
@@ -1573,17 +1649,33 @@ function relGroupBy(arr, keyFn){
   }));
 }
 
-function relRenderGroup(grupos, sortBy='receita', barColor){
+// Renderiza grupos como barras clicáveis (drill-down via cache)
+function relRenderGroupClickable(grupos, sortBy, barColor, cachePrefix){
   if(!grupos.length) return '<div class="empty" style="padding:14px 0">Sem dados</div>';
   const sorted=[...grupos].sort((a,b)=>b[sortBy]-a[sortBy]);
   const max=Math.max(...sorted.map(g=>g[sortBy]),1);
-  return sorted.map(g=>relBarRow(
-    g.key,
-    g[sortBy],
-    max,
-    `${g.count} venda${g.count!==1?'s':''} · ${fm(g.receita)} · ${g.margemMedia.toFixed(0)}% mg`,
-    barColor
-  )).join('');
+  return sorted.map((g,i)=>{
+    const pct = max>0 ? (g[sortBy]/max)*100 : 0;
+    const cacheKey = `${cachePrefix}_${i}`;
+    // Ordenar items por lucro pra mostrar os mais relevantes primeiro
+    const itemsSorted = [...g.items].sort((a,b)=>b.lucro-a.lucro);
+    window.__relCache[cacheKey] = {
+      title: g.key,
+      subtitle: `${g.count} ${g.count===1?'venda':'vendas'} · ${fm(g.receita)} · margem ${g.margemMedia.toFixed(0)}%`,
+      items: itemsSorted,
+      renderItem: relRowItem,
+    };
+    return `
+      <div class="rel-bar-row" onclick="openRelList('${cacheKey}')">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:8px">
+          <div style="font-size:13px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.key}</div>
+          <div style="font-size:12px;color:var(--text2);flex-shrink:0">${g.count} venda${g.count!==1?'s':''} · ${fm(g.receita)} · ${g.margemMedia.toFixed(0)}% mg</div>
+        </div>
+        <div style="height:8px;background:var(--bg2);border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${barColor||'var(--pink-600)'};border-radius:4px;transition:width .25s"></div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function renderRelPadroes(sold){
@@ -1600,24 +1692,24 @@ function renderRelPadroes(sold){
   const porEstado=relGroupBy(sold, s=>s.estado);
 
   return `
-    ${relCard('🏷️ Por categoria', 'Ordenado por receita (barra) · venda/total/margem',
-      relRenderGroup(porCat,'receita','var(--pink-600)')
+    ${relCard('🏷️ Por categoria', 'Tap em uma barra pra ver os itens · ordenado por receita',
+      relRenderGroupClickable(porCat,'receita','var(--pink-600)','pad_cat')
     )}
 
     ${relCard('👤 Por sexo da roupa', 'F · M · U · Sem sexo',
-      relRenderGroup(porSexo,'count','var(--teal-600)')
+      relRenderGroupClickable(porSexo,'count','var(--teal-600)','pad_sexo')
     )}
 
     ${relCard('🛒 Por plataforma', 'Qual plataforma vende mais',
-      relRenderGroup(porPlat,'receita','var(--pink-600)')
+      relRenderGroupClickable(porPlat,'receita','var(--pink-600)','pad_plat')
     )}
 
     ${relCard('📍 Por local de compra', 'Onde você compra mais barato e revende melhor',
-      relRenderGroup(porLocal,'lucro','var(--teal-600)')
+      relRenderGroupClickable(porLocal,'lucro','var(--teal-600)','pad_local')
     )}
 
     ${relCard('⭐ Por estado da peça', 'Novo / Usado / Razoável',
-      relRenderGroup(porEstado,'receita','var(--amber-800)')
+      relRenderGroupClickable(porEstado,'receita','var(--amber-400)','pad_estado')
     )}
   `;
 }
@@ -1626,7 +1718,8 @@ function renderRelPadroes(sold){
 function renderRelTempo(sold){
   // 1. Sazonalidade — soma de vendas por mês (independente do ano)
   const monthNames=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const porMes=Array(12).fill(null).map((_,i)=>({mes:i, label:monthNames[i], count:0, receita:0, lucro:0}));
+  const monthNamesFull=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const porMes=Array(12).fill(null).map((_,i)=>({mes:i, label:monthNames[i], labelFull:monthNamesFull[i], count:0, receita:0, lucro:0, items:[]}));
   sold.forEach(s=>{
     if(!s.dataVenda) return;
     const m=parseInt(s.dataVenda.slice(5,7))-1;
@@ -1634,6 +1727,7 @@ function renderRelTempo(sold){
       porMes[m].count++;
       porMes[m].receita+=s.vendido;
       porMes[m].lucro+=s.lucro;
+      porMes[m].items.push(s);
     }
   });
   const maxRec=Math.max(...porMes.map(m=>m.receita),1);
@@ -1644,7 +1738,7 @@ function renderRelTempo(sold){
   for(let i=11;i>=0;i--){
     const d=new Date(hoje.getFullYear(), hoje.getMonth()-i, 1);
     const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-    ultimos12[k]={key:k, label:monthNames[d.getMonth()]+'/'+String(d.getFullYear()).slice(2), count:0, receita:0, lucro:0};
+    ultimos12[k]={key:k, label:monthNames[d.getMonth()]+'/'+String(d.getFullYear()).slice(2), labelFull:monthNamesFull[d.getMonth()]+' de '+d.getFullYear(), count:0, receita:0, lucro:0, items:[]};
   }
   sold.forEach(s=>{
     if(!s.dataVenda) return;
@@ -1653,6 +1747,7 @@ function renderRelTempo(sold){
       ultimos12[k].count++;
       ultimos12[k].receita+=s.vendido;
       ultimos12[k].lucro+=s.lucro;
+      ultimos12[k].items.push(s);
     }
   });
   const u12=Object.values(ultimos12);
@@ -1667,24 +1762,42 @@ function renderRelTempo(sold){
   // Identificar mês "champion" (maior receita histórica)
   const champion=[...porMes].sort((a,b)=>b.receita-a.receita)[0];
 
+  // Renderiza uma barra clicável de tempo
+  function tempoBarra(m, max, cacheKey, fullLabel, color){
+    if(m.items.length>0){
+      const items=[...m.items].sort((a,b)=>(b.dataVenda||'').localeCompare(a.dataVenda||''));
+      window.__relCache[cacheKey]={
+        title: fullLabel,
+        subtitle: `${m.count} venda${m.count!==1?'s':''} · ${fm(m.receita)} · lucro ${fm(m.lucro)}`,
+        items, renderItem: relRowItem,
+      };
+    }
+    const pct = max>0 ? (m.receita/max)*100 : 0;
+    const clickable = m.items.length>0;
+    return `
+      <div class="${clickable?'rel-bar-row':''}" ${clickable?`onclick="openRelList('${cacheKey}')"`:''}>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:8px">
+          <div style="font-size:13px;color:var(--text);font-weight:500">${m.label}</div>
+          <div style="font-size:12px;color:var(--text2)">${m.count>0?`${m.count} venda${m.count!==1?'s':''} · ${fm(m.receita)}`:'sem vendas'}</div>
+        </div>
+        <div style="height:8px;background:var(--bg2);border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .25s"></div>
+        </div>
+      </div>`;
+  }
+
   return `
     ${relCard('🌞 Sazonalidade (todos os anos juntos)',
-      `Mês historicamente mais forte: <b>${champion.count>0?champion.label:'—'}</b> · ${fm(champion.receita)}`,
-      porMes.map(m=>relBarRow(
-        m.label,
-        m.receita,
-        maxRec,
-        m.count>0?`${m.count} venda${m.count!==1?'s':''} · ${fm(m.receita)}`:'sem vendas',
+      `Mês historicamente mais forte: <b>${champion.count>0?champion.labelFull:'—'}</b> · ${fm(champion.receita)}`,
+      porMes.map((m,i)=>tempoBarra(
+        m, maxRec, `temp_sazon_${i}`, m.labelFull+' (todos os anos)',
         m.receita===maxRec&&m.receita>0?'var(--teal-600)':'var(--pink-600)'
       )).join('')
     )}
 
-    ${relCard('📅 Últimos 12 meses', 'Receita por mês (mais recente embaixo)',
-      u12.map(m=>relBarRow(
-        m.label,
-        m.receita,
-        maxRec12,
-        m.count>0?`${m.count} venda${m.count!==1?'s':''} · ${fm(m.receita)} · lucro ${fm(m.lucro)}`:'sem vendas',
+    ${relCard('📅 Últimos 12 meses', 'Tap em uma barra pra ver as vendas daquele mês',
+      u12.map((m,i)=>tempoBarra(
+        m, maxRec12, `temp_u12_${i}`, m.labelFull,
         'var(--pink-600)'
       )).join('')
     )}
@@ -2062,6 +2175,115 @@ async function saveLst(editId){
   // Limpar variável temporária
   window.__lstEmbs=[];
 }
+// ── ITEM DETAIL MODAL ─────────────────────────────────────
+function openItemDetail(sku){
+  const inv=S.inventario.find(i=>i.sku===sku);
+  if(!inv){ toast('Item não encontrado','error'); return; }
+  const lst=S.listagem.find(l=>l.sku===sku&&l.status==='Vendido');
+  const ativos=S.listagem.filter(l=>l.sku===sku&&l.status==='Ativo');
+  const pago=parseFloat(inv.valorPago)||0;
+  const vendido=lst?(parseFloat(lst.valorVendido)||0):0;
+  const custoEmb=lst?getEmb(sku):0;
+  const lucro=lst?(vendido-pago-custoEmb):0;
+  const margem=pago>0?((lucro/pago)*100):0;
+  // Dias em estoque
+  let dias='—';
+  if(lst&&lst.dataVenda&&inv.dataCompra){
+    const dc=new Date(inv.dataCompra+'T12:00:00');
+    const dv=new Date(lst.dataVenda+'T12:00:00');
+    const diff=Math.round((dv-dc)/(1000*60*60*24));
+    if(!isNaN(diff)&&diff>=0) dias=diff+' '+(diff===1?'dia':'dias');
+  } else if(!lst && inv.dataCompra){
+    const dc=new Date(inv.dataCompra+'T12:00:00');
+    const now=new Date();
+    const diff=Math.round((now-dc)/(1000*60*60*24));
+    if(!isNaN(diff)&&diff>=0) dias=diff+' '+(diff===1?'dia':'dias')+' (em estoque)';
+  }
+  // Embalagens
+  const embs = lst ? lstEmbalagens(lst) : [];
+  const sexoLabel = inv.sexo==='F'?'F · Feminino':inv.sexo==='M'?'M · Masculino':inv.sexo==='U'?'U · Unissex':'—';
+  const sexoBadge = inv.sexo?`<span class="badge bg-${inv.sexo==='F'?'pink':inv.sexo==='M'?'teal':'gray'}" style="font-size:10px;margin-left:6px">${inv.sexo}</span>`:'';
+
+  const row = (label, value, color)=>`
+    <div style="display:flex;justify-content:space-between;padding:8px 2px;border-bottom:0.5px solid var(--border);font-size:13px">
+      <span style="color:var(--text2)">${label}</span>
+      <span style="color:${color||'var(--text)'};font-weight:500;text-align:right">${value}</span>
+    </div>`;
+
+  document.getElementById('mc').innerHTML=`
+    <div class="mbg" onclick="if(event.target===this)cm()">
+      <div class="modal">
+        <div class="mhdr">
+          <h2>${inv.nome}${sexoBadge}</h2>
+          <button class="xbtn" onclick="cm()">×</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <span class="sku">${inv.sku}</span>
+          ${bStatus(inv.statusItem)}
+          ${lst?bVenda('Vendido'):(ativos.length?bVenda('Ativo'):'')}
+        </div>
+
+        ${lst?`
+        <div class="card" style="padding:12px 14px;margin-bottom:12px;background:${lucro>=0?'var(--teal-50)':'var(--coral-50)'};border-color:${lucro>=0?'var(--teal-100)':'var(--coral-100)'}">
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Lucro líquido</div>
+          <div style="font-size:24px;font-weight:600;color:${lucro>=0?'var(--teal-800)':'var(--coral-800)'}">${fm(lucro)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">Margem: ${margem.toFixed(1)}%</div>
+        </div>
+        `:''}
+
+        <p class="stitle" style="margin-top:0">📦 Compra</p>
+        <div class="card" style="padding:6px 14px;margin-bottom:12px">
+          ${row('Categoria', inv.categoria||'—')}
+          ${row('Sexo', sexoLabel)}
+          ${row('Estado', inv.estadoCompra||'—')}
+          ${row('Local', inv.localCompra||'—')}
+          ${row('Data da compra', inv.dataCompra||'—')}
+          ${row('Valor pago', fm(pago), 'var(--coral-400)')}
+        </div>
+
+        ${lst?`
+        <p class="stitle">💰 Venda</p>
+        <div class="card" style="padding:6px 14px;margin-bottom:12px">
+          ${row('Data da venda', lst.dataVenda||'—')}
+          ${row('Plataforma', lst.plataforma||'—')}
+          ${row('Forma de pgto', lst.formaPgto||'—')}
+          ${row('Valor vendido', fm(vendido), 'var(--teal-600)')}
+          ${row('Em estoque', dias)}
+        </div>
+        `:ativos.length?`
+        <p class="stitle">📋 Anúncios ativos</p>
+        <div class="card" style="padding:6px 14px;margin-bottom:12px">
+          ${ativos.map(a=>`
+            ${row(a.plataforma||'—', fm(parseFloat(a.valorAlterado)||parseFloat(a.valorListado)||0))}
+          `).join('')}
+          ${row('Em estoque há', dias)}
+        </div>
+        `:`
+        <div class="empty" style="padding:14px">Sem venda ou anúncio ativo</div>
+        `}
+
+        ${embs.length>0?`
+        <p class="stitle">📥 Embalagens usadas</p>
+        <div class="card" style="padding:6px 14px;margin-bottom:12px">
+          ${embs.map(e=>{
+            const ins=S.insumos.find(i=>i.id===e.insumoId);
+            const nome=ins?ins.nome:'(insumo removido)';
+            const subtotal=e.qtd*e.custoUnit;
+            return row(`${nome} × ${e.qtd}`, fm(subtotal));
+          }).join('')}
+          ${row('Total embalagens', fm(custoEmb), 'var(--coral-400)')}
+        </div>
+        `:''}
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn" style="flex:1" onclick='cm();openInvModalObj(${JSON.stringify(inv).replace(/'/g,"\\'")})'>✏️ Editar item</button>
+          ${lst?`<button class="btn" style="flex:1" onclick='cm();openLstModalObj(${JSON.stringify(lst).replace(/'/g,"\\'")})'>✏️ Editar venda</button>`:''}
+        </div>
+      </div>
+    </div>`;
+}
+
+
 function dupLst(l){
   // Open listing modal pre-filled with same item but blank id, blank platform, status=Ativo
   const dup={...l, id:'', plataforma:'', status:'Ativo', valorVendido:'', dataVenda:'', formaPgto:''};
