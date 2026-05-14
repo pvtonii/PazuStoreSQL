@@ -36,6 +36,12 @@ body{display:flex;justify-content:center;}
 .sync-pill.ok .dot{background:var(--teal-400);}
 .sync-pill.error{background:var(--coral-50);color:var(--coral-800);border-color:var(--coral-100);}
 .sync-pill.error .dot{background:var(--coral-400);}
+.refresh-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--pink-600);cursor:pointer;padding:0;flex-shrink:0;transition:background .15s;}
+.refresh-btn:hover{background:var(--pink-50);}
+.refresh-btn:active{transform:scale(0.92);}
+.refresh-btn svg{width:16px;height:16px;}
+.refresh-btn.spinning svg{animation:spin 0.8s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 24px);}
 .tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:calc(var(--nav-h) + var(--safe-bottom));padding-bottom:var(--safe-bottom);background:var(--bg);border-top:0.5px solid var(--border);box-shadow:0 -4px 20px rgba(0,0,0,0.08);display:flex;z-index:100;align-items:flex-start;}
 .tab{flex:1;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;border:none;background:transparent;color:var(--gray-400);font-size:10px;font-family:inherit;transition:color .15s;min-height:var(--nav-h);}
@@ -163,6 +169,9 @@ label{font-size:12px;color:var(--text2);display:block;margin-bottom:3px;}
   <div class="topbar">
     <div class="logo">G</div>
     <h1>Gigi's Shop</h1>
+    <button class="refresh-btn" id="refreshBtn" onclick="forceRefresh()" title="Atualizar dados">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
     <div class="sync-pill" id="syncPill"><div class="dot"></div><span id="syncTxt">–</span></div>
   </div>
   <div class="content" id="content"></div>
@@ -237,8 +246,11 @@ function sbHeaders(){
   };
 }
 
-async function sbGet(table, params=''){
-  const r=await fetch(SB_URL+'/rest/v1/'+table+'?'+params, { headers: sbHeaders() });
+async function sbGet(table, params='', opts={}){
+  const headers={...sbHeaders()};
+  if(opts.noCache){ headers['Cache-Control']='no-cache'; headers['Pragma']='no-cache'; }
+  const url=SB_URL+'/rest/v1/'+table+'?'+params + (opts.noCache?('&_ts='+Date.now()):'');
+  const r=await fetch(url, { headers, cache: opts.noCache?'no-store':'default' });
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -260,16 +272,16 @@ async function sbDelete(table, col, val){
   if(!r.ok) throw new Error(await r.text());
 }
 
-async function syncFromSupabase(){
+async function syncFromSupabase(opts={}){
   if(!SB_URL||!SB_KEY) return;
   setSyncUI('syncing','lendo');
   try{
     const [invRaw, lstRaw, gastosRaw, insumosRaw, cfgRaw] = await Promise.all([
-      sbGet('inventario','select=*&order=created_at.asc'),
-      sbGet('listagem','select=*&order=created_at.asc'),
-      sbGet('gastos','select=*&order=data.desc'),
-      sbGet('insumos','select=*&order=nome.asc'),
-      sbGet('config','select=*'),
+      sbGet('inventario','select=*&order=created_at.asc',opts),
+      sbGet('listagem','select=*&order=created_at.asc',opts),
+      sbGet('gastos','select=*&order=data.desc',opts),
+      sbGet('insumos','select=*&order=nome.asc',opts),
+      sbGet('config','select=*',opts),
     ]);
 
     // Deduplicate inventory by sku
@@ -298,6 +310,20 @@ async function syncFromSupabase(){
     setSyncUI('ok','sincronizado');
     toast('Dados sincronizados!','success');
   }catch(e){ setSyncUI('error','sem conexão'); toast('Erro ao sincronizar com o Supabase','error'); console.error(e); }
+}
+
+async function forceRefresh(){
+  if(!SB_URL||!SB_KEY){ toast('Configure o Supabase em Config primeiro','warn'); return; }
+  const btn=document.getElementById('refreshBtn');
+  if(btn) btn.classList.add('spinning');
+  try{
+    await syncFromSupabase({noCache:true});
+  } finally {
+    if(btn){
+      // Mantém girando por pelo menos 400ms pra dar feedback visual mesmo se a rede for muito rápida
+      setTimeout(()=>btn.classList.remove('spinning'), 400);
+    }
+  }
 }
 
 async function pushUpsert(table, data){ 
@@ -473,10 +499,7 @@ function renderDash(){
     .sort((a,b)=>b.lucro-a.lucro).slice(0,5);
 
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <p class="stitle" style="margin:0">Resumo financeiro</p>
-      <button class="btn btn-sm" onclick="syncFromSupabase()">↻ Atualizar</button>
-    </div>
+    <p class="stitle">Resumo financeiro</p>
     <div class="mgrid">
       <div class="metric"><div class="mlbl">Total investido</div><div class="mval">${fm(totalInvestido)}</div><div class="msub">Mercadoria + fixos + insumos</div></div>
       <div class="metric"><div class="mlbl">Total em mercadoria</div><div class="mval">${fm(totalMercadoria)}</div><div class="msub">${inv.length} ${inv.length===1?'peça':'peças'}</div></div>
