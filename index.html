@@ -269,12 +269,16 @@ function sbHeaders(){
   };
 }
 
-async function sbGet(table, params='', opts={}){
-  // Importante: NÃO adicionar headers como 'Cache-Control' aqui — eles quebram o CORS do PostgREST.
-  // Pra burlar cache, usamos cache:'no-store' + timestamp na query.
-  const url=SB_URL+'/rest/v1/'+table+'?'+params + (opts.noCache?('&_ts='+Date.now()):'');
-  const r=await fetch(url, { headers: sbHeaders(), cache: opts.noCache?'no-store':'default' });
-  if(!r.ok) throw new Error(await r.text());
+async function sbGet(table, params=''){
+  // PostgREST padrão do Supabase já não tem cache HTTP. Não adicionamos headers extras
+  // nem parâmetros de URL pra evitar problemas de CORS e queries inválidas.
+  const url=SB_URL+'/rest/v1/'+table+'?'+params;
+  const r=await fetch(url, { headers: sbHeaders() });
+  if(!r.ok){
+    const errText=await r.text();
+    console.error('[sbGet] '+table+' falhou:', r.status, errText);
+    throw new Error('GET '+table+' '+r.status+': '+errText);
+  }
   return r.json();
 }
 
@@ -295,17 +299,22 @@ async function sbDelete(table, col, val){
   if(!r.ok) throw new Error(await r.text());
 }
 
-async function syncFromSupabase(opts={}){
+async function syncFromSupabase(){
   if(!SB_URL||!SB_KEY) return;
   setSyncUI('syncing','lendo');
+  console.log('[sync] Iniciando sincronização...');
   try{
     const [invRaw, lstRaw, gastosRaw, insumosRaw, cfgRaw] = await Promise.all([
-      sbGet('inventario','select=*&order=created_at.asc',opts),
-      sbGet('listagem','select=*&order=created_at.asc',opts),
-      sbGet('gastos','select=*&order=data.desc',opts),
-      sbGet('insumos','select=*&order=nome.asc',opts),
-      sbGet('config','select=*',opts),
+      sbGet('inventario','select=*&order=created_at.asc'),
+      sbGet('listagem','select=*&order=created_at.asc'),
+      sbGet('gastos','select=*&order=data.desc'),
+      sbGet('insumos','select=*&order=nome.asc'),
+      sbGet('config','select=*'),
     ]);
+    console.log('[sync] Recebidos:', {
+      inv: invRaw?.length, lst: lstRaw?.length, gastos: gastosRaw?.length,
+      insumos: insumosRaw?.length, cfg: cfgRaw?.length
+    });
 
     // Deduplicate inventory by sku
     const invMap={};
@@ -332,7 +341,13 @@ async function syncFromSupabase(opts={}){
     saveL(); render();
     setSyncUI('ok','sincronizado');
     toast('Dados sincronizados!','success');
-  }catch(e){ setSyncUI('error','sem conexão'); toast('Erro ao sincronizar com o Supabase','error'); console.error(e); }
+    console.log('[sync] ✅ Concluído com sucesso');
+  }catch(e){
+    setSyncUI('error','sem conexão');
+    toast('Erro ao sincronizar com o Supabase','error');
+    console.error('[sync] ❌ Falhou:', e.message);
+    console.error('[sync] Stack:', e.stack);
+  }
 }
 
 async function forceRefresh(){
@@ -340,7 +355,7 @@ async function forceRefresh(){
   const btn=document.getElementById('refreshBtn');
   if(btn) btn.classList.add('spinning');
   try{
-    await syncFromSupabase({noCache:true});
+    await syncFromSupabase();
   } finally {
     if(btn){
       // Mantém girando por pelo menos 400ms pra dar feedback visual mesmo se a rede for muito rápida
