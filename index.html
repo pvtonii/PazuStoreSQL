@@ -236,8 +236,8 @@ document.addEventListener('touchend', function(e){
 }, {passive:false});
 
 // ── STATE ──────────────────────────────────────────────────
-const APP_VERSION = '02';
-const APP_VERSION_DATE = 'May 17, 2026';
+const APP_VERSION = '03';
+const APP_VERSION_DATE = 'May 18, 2026';
 let SB_URL = localStorage.getItem('gigi_sb_url') || '';
 let SB_KEY = localStorage.getItem('gigi_sb_key') || '';
 const LS = 'gigi_shop_v3';
@@ -1447,12 +1447,28 @@ async function saveInsumo(editId){
 }
 
 async function delInsumo(id){
-  const nome=(S.insumos.find(i=>i.id===id)||{}).nome||'Insumo';
-  if(!confirm(`Remover "${nome}"?`)) return;
+  const ins=S.insumos.find(i=>i.id===id);
+  if(!ins) return;
+  const nome=ins.nome||'Insumo';
+  const gastosVinculados=S.gastos.filter(g=>g.insumoId===id);
+  const totalVinculado=gastosVinculados.reduce((s,g)=>s+(parseFloat(g.valor)||0),0);
+  let msg=`Remover "${nome}"?`;
+  if(gastosVinculados.length>0){
+    msg+=`\n\nIsso também vai apagar ${gastosVinculados.length} ${gastosVinculados.length===1?'gasto vinculado':'gastos vinculados'} (total ${fm(totalVinculado)}) — compra inicial e restocks.`;
+  }
+  if(!confirm(msg)) return;
+  // Remove gastos vinculados primeiro (localmente + Supabase)
+  const idsParaApagar=gastosVinculados.map(g=>g.id);
+  S.gastos=S.gastos.filter(g=>g.insumoId!==id);
   S.insumos=S.insumos.filter(i=>i.id!==id);
   saveL(); render();
+  // Sync no Supabase
+  for(const gid of idsParaApagar){
+    try{ await pushDeleteGasto(gid); }catch(e){ console.warn('Falha ao apagar gasto',gid,e); }
+  }
   await pushDeleteInsumo(id);
-  toast(`"${nome}" removido`,'warn');
+  const sufixo = gastosVinculados.length>0 ? ` · ${gastosVinculados.length} ${gastosVinculados.length===1?'gasto removido':'gastos removidos'}` : '';
+  toast(`"${nome}" removido${sufixo}`,'warn');
 }
 
 function openCompraInsumoModal(item){
