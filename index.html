@@ -236,7 +236,7 @@ document.addEventListener('touchend', function(e){
 }, {passive:false});
 
 // ── STATE ──────────────────────────────────────────────────
-const APP_VERSION = '05';
+const APP_VERSION = '06';
 const APP_VERSION_DATE = 'May 18, 2026';
 let SB_URL = localStorage.getItem('gigi_sb_url') || '';
 let SB_KEY = localStorage.getItem('gigi_sb_key') || '';
@@ -1079,7 +1079,7 @@ function bVenda(s){ return s==='Vendido'?`<span class="badge bg-green">${s}</spa
 
 // Cicla pelos valores do filtro de status do inventário
 function cycleInvStatus(){
-  const opts=['Todos','Em Estoque','Ativos','Vendidos'];
+  const opts=['Todos','Em Estoque','Listados','Vendidos'];
   const i=opts.indexOf(invStatus);
   invStatus=opts[(i+1)%opts.length];
   render();
@@ -1102,7 +1102,7 @@ function renderInv(){
   if(invF!=='Todos') items=items.filter(i=>i.categoria===invF);
   if(invSexo!=='Todos') items=items.filter(i=>(i.sexo||'')===invSexo);
   if(invStatus==='Vendidos') items=items.filter(i=>getSV(i.sku)==='Vendido');
-  else if(invStatus==='Ativos') items=items.filter(i=>getSV(i.sku)==='Ativo');
+  else if(invStatus==='Listados') items=items.filter(i=>getSV(i.sku)==='Ativo');
   else if(invStatus==='Em Estoque') items=items.filter(i=>{
     if(getSV(i.sku)==='Vendido') return false;
     // sem nenhuma listagem ativa
@@ -1123,7 +1123,7 @@ function renderInv(){
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
       <div class="frow" style="margin:0;flex:1;min-width:0;gap:6px">
-        <button class="chip active" onclick="cycleInvStatus()" title="Toque pra alternar">${invStatus==='Todos'?'📦 Todos':invStatus==='Em Estoque'?'🏠 Em Estoque':invStatus==='Ativos'?'🟢 Ativos':'✅ Vendidos'}</button>
+        <button class="chip active" onclick="cycleInvStatus()" title="Toque pra alternar">${invStatus==='Todos'?'📦 Todos':invStatus==='Em Estoque'?'🏠 Em Estoque':invStatus==='Listados'?'🟢 Listados':'✅ Vendidos'}</button>
         <button class="chip active" onclick="cycleInvSexo()" title="Toque pra alternar">${invSexo==='Todos'?'👥 Todos':invSexo==='F'?'👩 F':invSexo==='M'?'👨 M':'🧑 U'}</button>
       </div>
       <select onchange="invSort=this.value;render()" style="width:auto;margin:0;padding:5px 10px;font-size:12px;flex-shrink:0">
