@@ -236,7 +236,7 @@ document.addEventListener('touchend', function(e){
 }, {passive:false});
 
 // ── STATE ──────────────────────────────────────────────────
-const APP_VERSION = '06';
+const APP_VERSION = '07';
 const APP_VERSION_DATE = 'May 18, 2026';
 let SB_URL = localStorage.getItem('gigi_sb_url') || '';
 let SB_KEY = localStorage.getItem('gigi_sb_key') || '';
@@ -1161,7 +1161,7 @@ function renderInv(){
               </div>
             </div>
             <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
-              ${bStatus(i.statusItem)}${sv?bVenda(sv):''}
+              ${sv==='Vendido'?'<span class="badge bg-green">✅ Vendido</span>':sv==='Ativo'?'<span class="badge bg-pink">🟢 Listado</span>':'<span class="badge bg-teal">🏠 Em Estoque</span>'}
               <div style="display:flex;gap:4px;margin-top:2px">
                 <button class="btn btn-sm" onclick='openInvModalObj(${JSON.stringify(i)})' style="padding:4px 8px">✏️</button>
                 <button class="btn btn-sm btn-danger" onclick="delInv('${i.sku}')" style="padding:4px 8px">🗑</button>
