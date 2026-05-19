@@ -236,7 +236,7 @@ document.addEventListener('touchend', function(e){
 }, {passive:false});
 
 // ── STATE ──────────────────────────────────────────────────
-const APP_VERSION = '04';
+const APP_VERSION = '05';
 const APP_VERSION_DATE = 'May 18, 2026';
 let SB_URL = localStorage.getItem('gigi_sb_url') || '';
 let SB_KEY = localStorage.getItem('gigi_sb_key') || '';
@@ -1077,6 +1077,21 @@ function openWeekDetail(weekStart){
 function bStatus(s){ return s==='Em Estoque'?`<span class="badge bg-teal">${s}</span>`:s==='Listado'?`<span class="badge bg-pink">${s}</span>`:`<span class="badge bg-gray">${s||'—'}</span>`; }
 function bVenda(s){ return s==='Vendido'?`<span class="badge bg-green">${s}</span>`:s==='Ativo'?`<span class="badge bg-amber">${s}</span>`:s==='Expirado'?`<span class="badge bg-coral">${s}</span>`:`<span class="badge bg-gray">${s||'—'}</span>`; }
 
+// Cicla pelos valores do filtro de status do inventário
+function cycleInvStatus(){
+  const opts=['Todos','Em Estoque','Ativos','Vendidos'];
+  const i=opts.indexOf(invStatus);
+  invStatus=opts[(i+1)%opts.length];
+  render();
+}
+// Cicla pelos valores do filtro de sexo do inventário
+function cycleInvSexo(){
+  const opts=['Todos','F','M','U'];
+  const i=opts.indexOf(invSexo);
+  invSexo=opts[(i+1)%opts.length];
+  render();
+}
+
 function renderInv(){
   const cats=['Todos',...S.config.categorias];
   let items=S.inventario.filter(i=>{
@@ -1107,8 +1122,9 @@ function renderInv(){
       <input id="invSearch" placeholder="Buscar por nome, localização, local..." value="${invQ}" oninput="invQ=this.value;render();const el=document.getElementById('invSearch');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}"/>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-      <div class="frow" style="margin:0;flex:1;min-width:0">
-        ${['Todos','Em Estoque','Ativos','Vendidos'].map(s=>`<button class="chip ${invStatus===s?'active':''}" onclick="invStatus='${s}';render()">${s}</button>`).join('')}
+      <div class="frow" style="margin:0;flex:1;min-width:0;gap:6px">
+        <button class="chip active" onclick="cycleInvStatus()" title="Toque pra alternar">${invStatus==='Todos'?'📦 Todos':invStatus==='Em Estoque'?'🏠 Em Estoque':invStatus==='Ativos'?'🟢 Ativos':'✅ Vendidos'}</button>
+        <button class="chip active" onclick="cycleInvSexo()" title="Toque pra alternar">${invSexo==='Todos'?'👥 Todos':invSexo==='F'?'👩 F':invSexo==='M'?'👨 M':'🧑 U'}</button>
       </div>
       <select onchange="invSort=this.value;render()" style="width:auto;margin:0;padding:5px 10px;font-size:12px;flex-shrink:0">
         <option value="recente" ${invSort==='recente'?'selected':''}>Mais recente</option>
@@ -1118,9 +1134,6 @@ function renderInv(){
         <option value="menor" ${invSort==='menor'?'selected':''}>Menor valor pago</option>
         <option value="lucro" ${invSort==='lucro'?'selected':''}>Maior lucro</option>
       </select>
-    </div>
-    <div class="frow">
-      ${['Todos','F','M','U'].map(s=>`<button class="chip ${invSexo===s?'active':''}" onclick="invSexo='${s}';render()">${s==='Todos'?'Todos sexos':s}</button>`).join('')}
     </div>
     <div style="margin-bottom:10px">
       <select onchange="invF=this.value;render()" style="width:100%;margin:0;padding:8px 10px;font-size:14px">
