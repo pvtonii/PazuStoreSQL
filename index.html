@@ -236,8 +236,8 @@ document.addEventListener('touchend', function(e){
 }, {passive:false});
 
 // ── STATE ──────────────────────────────────────────────────
-const APP_VERSION = '07';
-const APP_VERSION_DATE = 'May 18, 2026';
+const APP_VERSION = '08';
+const APP_VERSION_DATE = 'May 19, 2026';
 let SB_URL = localStorage.getItem('gigi_sb_url') || '';
 let SB_KEY = localStorage.getItem('gigi_sb_key') || '';
 const LS = 'gigi_shop_v3';
@@ -1177,6 +1177,62 @@ function renderInv(){
     </div>`}`;
 }
 
+// ── TRACKING ──────────────────────────────────────────────
+// Detecta a transportadora pelo padrão do código e retorna URL de rastreio
+function detectCarrier(code){
+  if(!code) return null;
+  const c=code.trim().replace(/\s/g,'').toUpperCase();
+  // UPS: começa com 1Z
+  if(/^1Z[A-Z0-9]{16}$/.test(c)) return {name:'UPS', url:`https://www.ups.com/track?tracknum=${c}`};
+  // USPS: 20-22 dígitos, começa com 9 (94, 92, 93, 95, 9400, 9205, etc.) ou 13 chars formato EA/EC/CP+9digits+US
+  if(/^9[0-9]{19,21}$/.test(c)) return {name:'USPS', url:`https://tools.usps.com/go/TrackConfirmAction?tLabels=${c}`};
+  if(/^[A-Z]{2}[0-9]{9}US$/.test(c)) return {name:'USPS', url:`https://tools.usps.com/go/TrackConfirmAction?tLabels=${c}`};
+  // FedEx: 12 ou 15 dígitos
+  if(/^[0-9]{12}$/.test(c) || /^[0-9]{15}$/.test(c)) return {name:'FedEx', url:`https://www.fedex.com/fedextrack/?trknbr=${c}`};
+  // DHL: 10 dígitos
+  if(/^[0-9]{10}$/.test(c)) return {name:'DHL', url:`https://www.dhl.com/us-en/home/tracking/tracking-express.html?submit=1&tracking-id=${c}`};
+  // Fallback genérico: 17track (detecta sozinho)
+  return {name:'17track', url:`https://t.17track.net/en#nums=${c}`};
+}
+
+function openTracking(code){
+  const carrier=detectCarrier(code);
+  if(!carrier){ toast('Código de rastreio inválido','error'); return; }
+  toast(`Abrindo ${carrier.name}...`,'info',1500);
+  window.open(carrier.url,'_blank');
+}
+
+async function addTrackingPrompt(listingId){
+  const l=S.listagem.find(x=>x.id===listingId);
+  if(!l){ toast('Anúncio não encontrado','error'); return; }
+  document.getElementById('mc').innerHTML=`
+    <div class="mbg" onclick="if(event.target===this)cm()">
+      <div class="modal">
+        <div class="mhdr"><h2>📦 Código de rastreio</h2><button class="xbtn" onclick="cm()">×</button></div>
+        <label>Código (USPS, UPS, FedEx, DHL)</label>
+        <input type="text" id="trk_inp" value="${l.trackingCode||''}" placeholder="Ex: 9400111899223456789012" autofocus/>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;margin-bottom:14px">A transportadora será detectada automaticamente.</div>
+        <button class="btn btn-primary" style="width:100%" onclick="saveTrackingCode('${listingId}')">Salvar</button>
+      </div>
+    </div>`;
+  setTimeout(()=>{const i=document.getElementById('trk_inp');if(i)i.focus();},50);
+}
+
+async function saveTrackingCode(listingId){
+  const l=S.listagem.find(x=>x.id===listingId);
+  if(!l){ toast('Anúncio não encontrado','error'); return; }
+  const val=document.getElementById('trk_inp').value.trim();
+  l.trackingCode=val;
+  saveL(); cm(); render();
+  await pushUpsert('listagem',l);
+  if(val){
+    const carrier=detectCarrier(val);
+    toast(`Rastreio salvo${carrier?` (${carrier.name})`:''}`,'success');
+  }else{
+    toast('Rastreio removido','info');
+  }
+}
+
 // ── LISTAGEM ──────────────────────────────────────────────
 function renderLst(){
   const plats=['Todos',...S.config.plataformas];
@@ -1213,6 +1269,10 @@ function renderLst(){
             <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
               ${bVenda(l.status)}
               <div style="display:flex;gap:4px;margin-top:2px">
+                ${l.status==='Vendido'?(l.trackingCode
+                  ?`<button class="btn btn-sm" onclick="openTracking('${(l.trackingCode||'').replace(/'/g,"\\'")}')" style="padding:4px 8px" title="Rastrear ${(detectCarrier(l.trackingCode)||{}).name||''}">📦</button>`
+                  :`<button class="btn btn-sm" onclick="addTrackingPrompt('${l.id}')" style="padding:4px 8px;opacity:0.4" title="Adicionar código de rastreio">📦</button>`
+                ):''}
                 <button class="btn btn-sm" onclick='dupLst(${JSON.stringify(l)})' style="padding:4px 8px" title="Duplicar">⧉</button>
                 <button class="btn btn-sm" onclick='openLstModalObj(${JSON.stringify(l)})' style="padding:4px 8px">✏️</button>
                 <button class="btn btn-sm btn-danger" onclick="delLst('${l.id}')" style="padding:4px 8px">🗑</button>
@@ -2403,6 +2463,9 @@ function openLstModal(item){
           <div id="l_embs_list"></div>
           <button type="button" class="btn btn-sm" style="width:100%;margin-bottom:10px" onclick="addEmbRow()">+ Adicionar embalagem</button>
           <div id="l_emb_total" style="font-size:12px;color:var(--text2);margin-top:-4px;margin-bottom:10px"></div>
+          <label>📦 Código de rastreio</label>
+          <input type="text" id="l_track" value="${e?(e.trackingCode||''):''}" placeholder="Ex: 9400111899223456789012" style="margin-bottom:10px"/>
+          <div style="font-size:11px;color:var(--text2);margin-top:-6px;margin-bottom:10px">USPS, UPS, FedEx ou DHL — detecta automaticamente</div>
         </div>
         <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="saveLst('${e?e.id:''}')">Salvar</button>
       </div>
@@ -2532,6 +2595,7 @@ async function saveLst(editId){
     status,
     embalagens: status==='Vendido' ? newEmbs : [],
     custoEmbalagem: status==='Vendido' ? custoTotalEmb : 0,
+    trackingCode: status==='Vendido' ? (document.getElementById('l_track')?.value.trim()||'') : '',
     // limpar campos legados
     embalagemId: '',
   };
